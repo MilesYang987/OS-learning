@@ -1,3 +1,5 @@
+BUILD:=build
+SRC:=.
 C_SOURCES = $(wildcard kernel/*.c drivers/*.c)
 HEADERS = $(wildcard kernel/*.h drivers/*.h)
 
@@ -10,40 +12,53 @@ GDB = gdb
 
 CFLAGS = -g
 
+ENTRYPOINT:=0x10000
 
-os-image.bin: make/boot.bin make/loader.bin
-	dd if=/dev/zero of=$@ bs=512 count=10
-	dd if=make/boot.bin of=$@ bs=512 conv=notrunc count=1
-	dd if=make/loader.bin of=$@ bs=512 seek=1 count=4 conv=notrunc
+.PHONY: run build test clean
+
+os-image.bin: $(BUILD)/boot.bin $(BUILD)/loader.bin \
+	$(BUILD)/system.bin $(BUILD)/system.map
+	dd if=/dev/zero of=$@ bs=512 count=500
+	dd if=$(BUILD)/boot.bin of=$@ bs=512 count=1 conv=notrunc
+	dd if=$(BUILD)/loader.bin of=$@ bs=512 seek=1 count=4 conv=notrunc
+	dd if=$(BUILD)/system.bin of=$@ bs=512 seek=10 count=200 conv=notrunc
 
 
-.PHONY: run
 run: os-image.bin
 	qemu-system-i386 \
 	-drive format=raw,media=disk,file=$< \
 	-vga std
 
-.PHONY: build
 build: os-image.bin
 
-debug: os-image.bin make/boot.elf
+debug: os-image.bin $(BUILD)/boot.elf
 	qemu-system-i386 \
 	-drive format=raw,media=disk,file=$< \
 	-vga std &
-	${GDB} -ex "target remote localhost:1234" -ex "symbol-file make/boot.elf"
+	${GDB} -ex "target remote localhost:1234" -ex "symbol-file $(BUILD)/boot.elf"
 
-# Generic rules for wildcards
-# To make an object, always compile from its .c
+
 %.o: %.c ${HEADERS}
 	${CC} ${CFLAGS} -ffreestanding -c $< -o $@ -fno-pic -m32
 
-make/%.elf: boot/%.asm
-	nasm $< -f elf -o $@ ${INCLUDE}
+$(BUILD)/kernel/%.o: $(SRC)/kernel/%.asm
+	$(shell mkdir -p $(dir $@))
+	nasm -f elf32 $< -o $@ ${INCLUDE}
 
-make/%.bin: boot/%.asm
+$(BUILD)/kernel.bin: $(BUILD)/kernel/start.o
+	ld -m elf_i386 -static $^ -o $@ -Ttext $(ENTRYPOINT)
+
+$(BUILD)/%.bin: boot/%.asm
+	$(shell mkdir -p $(dir $@))
 	nasm $< -f bin -o $@ ${INCLUDE}
 
-.PHONY: clean
+$(BUILD)/system.bin: $(BUILD)/kernel.bin
+	objcopy -O binary $^ $@
+
+$(BUILD)/system.map: $(BUILD)/kernel.bin
+	nm $^ | sort > $@
+
+test: os-image.bin
+
 clean:
-	rm -rf make/*.bin *.o os-image.bin *.elf
-	rm -rf kernel/*.o drivers/*.o boot/*.o
+	rm -rf $(BUILD) *.bin
