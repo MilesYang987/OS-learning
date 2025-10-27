@@ -1,0 +1,35 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build OS",
+            "type": "shell",
+            "command": "nasm",
+            "args": [
+                "-f",
+                "bin",
+                "-i",
+                "${fileDirnameBasename}",
+                "-o",
+                "${workspaceFolder}/bin/${fileBasenameNoExtension}.bin",
+                "${fileDirnameBasename}/${fileBasename}"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "RUN",
+            "type": "shell",
+            "command":"G:\\Tools\\qemu\\qemu-system-x86_64.exe",
+            "args": [
+                "-drive",
+                "file=\"F:\\OS\\bin\\${fileBasenameNoExtension}.bin\",format=raw"
+            ]
+        }
+    ]
+}
